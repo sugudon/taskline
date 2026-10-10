@@ -8,7 +8,7 @@
 
 ```bash
 # 1. Clone
-git clone https://github.com/sugudon/MicroSaaS-Template.git my-saas
+git clone https://github.com/sugudon/taskline.git my-saas
 cd my-saas
 
 # 2. Define your product
