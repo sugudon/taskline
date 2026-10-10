@@ -5,14 +5,16 @@ Environment defaults are set BEFORE the app is imported so `app.config.settings`
 """
 
 import os
+import secrets
 import warnings
 from collections.abc import Callable, Generator, Iterator
 from datetime import date
 from typing import Any
 
-TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "sqlite://")
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL") or "sqlite://"
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL
-os.environ["SECRET_KEY"] = "test-secret-key-for-pytest-only-0123456789abcdefghijklmnop"
+# Fresh random signing key per test run; no key material lives in the repo.
+os.environ["SECRET_KEY"] = secrets.token_urlsafe(48)
 os.environ["GOOGLE_CLIENT_ID"] = ""
 os.environ["GOOGLE_CLIENT_SECRET"] = ""
 os.environ["FRONTEND_URL"] = "http://frontend.test"

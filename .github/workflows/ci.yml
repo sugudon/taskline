@@ -22,7 +22,8 @@ jobs:
         image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          # Throwaway container reachable only from this job: no password stored in the repo.
+          POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_DB: taskline_test
         ports:
           - 5432:5432
@@ -34,15 +35,14 @@ jobs:
     env:
       # Alembic migrates this DB; pytest runs against a separate Postgres DB (created below) so
       # its create_all/drop_all never collides with the migrated schema.
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskline_test
-      TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/taskline_pytest
-      # Must be >= 32 chars and not a known placeholder (the backend validates it at startup).
-      SECRET_KEY: ci-only-hmac-key-7f3a9c2e5b8d1f4a6c0e9b2d7a5f3c1e8b6d4a2f
+      DATABASE_URL: postgresql://postgres@localhost:5432/taskline_test
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/taskline_pytest
+      # SECRET_KEY is generated per run (see "Generate ephemeral secrets"); never stored in the repo.
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: "30"
       REFRESH_TOKEN_EXPIRE_DAYS: "7"
-      GOOGLE_CLIENT_ID: ci-google-client-id
-      GOOGLE_CLIENT_SECRET: ci-google-client-secret
+      GOOGLE_CLIENT_ID: ""
+      GOOGLE_CLIENT_SECRET: ""
       GOOGLE_REDIRECT_URI: http://localhost:8000/api/v1/auth/google/callback
       FRONTEND_URL: http://localhost:5173
       CORS_ORIGINS: http://localhost:5173,http://localhost:3000
@@ -50,6 +50,12 @@ jobs:
       RATE_LIMIT_ENABLED: "true"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Generate ephemeral secrets
+        run: |
+          secret="$(openssl rand -hex 32)"
+          echo "::add-mask::$secret"
+          echo "SECRET_KEY=$secret" >> "$GITHUB_ENV"
 
       - uses: actions/setup-python@v5
         with:
@@ -77,7 +83,6 @@ jobs:
 
       - name: Create pytest database
         env:
-          PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -c "CREATE DATABASE taskline_pytest;"
 
       - name: Migrations

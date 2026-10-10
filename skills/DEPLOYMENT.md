@@ -122,9 +122,9 @@ volumes:
 ```env
 # .env.example
 DB_USER=postgres
-DB_PASSWORD=securepassword
+DB_PASSWORD=<generate: openssl rand -hex 24>
 DB_NAME=appdb
-SECRET_KEY=change-me-in-production
+SECRET_KEY=<generate: openssl rand -hex 32>
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 VITE_API_URL=http://localhost:8000
