@@ -181,6 +181,16 @@ describe('AssignmentDetailPage', () => {
     renderPage(2);
     const select = await screen.findByLabelText('Assignee');
     await waitFor(() => expect(select).toBeEnabled());
-    expect(screen.getByText(/You can reassign this task/)).toBeInTheDocument();
+    expect(screen.getByText(/You can change the status and reassign this task/)).toBeInTheDocument();
+  });
+
+  it('sends the assignee to their dashboard after passing the task on', async () => {
+    setup({ assignment: makeAssignment({ id: 5, created_by: ada, assignee: bob }) });
+    mockApi.patch.mockResolvedValue({ data: makeAssignment({ id: 5, created_by: ada, assignee: ada }) });
+    renderPage(2);
+    const select = await screen.findByLabelText('Assignee');
+    await waitFor(() => expect(within(select).getByRole('option', { name: 'Ada Lovelace' })).toBeInTheDocument());
+    await userEvent.setup().selectOptions(select, '1');
+    expect(await screen.findByTestId('location')).toHaveTextContent('/dashboard');
   });
 });

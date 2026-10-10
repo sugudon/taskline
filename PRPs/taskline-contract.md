@@ -10,6 +10,10 @@
 - All API routes under `/api/v1`. `GET /health` at root.
 - Errors: `app/exceptions.py` → `AppException(message, code, status_code)`, subclasses `NotFoundError(resource)` 404, `ConflictError` 409, `ForbiddenError` 403, `UnauthorizedError` 401, `BadRequestError` 400. Handler returns `{"detail": message, "code": code}`.
 - Non-members accessing a project/assignment get **404** (not 403). Members lacking permission get **403**.
+- **Assignment visibility:** the project owner (Scrum master) sees every assignment in projects they own;
+  a team member sees only assignments **assigned to them or created by them**. Anything else is 404 everywhere
+  (lists, board, detail, comments, dashboard, project counts, AI context). Project `assignment_count` /
+  `open_assignment_count` count only what the viewer can see.
 - DB errors: `IntegrityError` → 409 `{"detail":"Conflicting data","code":"CONFLICT"}`; `OperationalError` → 503 `{"detail":..., "code":"SERVICE_UNAVAILABLE"}`.
 - Rate limits (per client IP, `RATE_LIMIT_ENABLED` setting, default true): POST /auth/login 5/min, POST /auth/register 3/min, POST /auth/refresh 30/min, PUT /auth/password 5/min. Exceeded → 429 `{"detail": str, "code": "RATE_LIMITED"}` (+ `Retry-After`, CORS headers present).
 - Archived projects are read-only: creating/updating assignments (incl. status/assignee), creating comments and adding members → 409 `{"detail":"Project is archived","code":"CONFLICT"}`. Project update (e.g. unarchive) and delete remain allowed for the owner.

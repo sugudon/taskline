@@ -33,8 +33,8 @@ from app.schemas.user import UserSummary
 from app.services.access import (
     get_project_for_member,
     is_owner,
-    member_project_ids,
     require_not_archived,
+    visible_condition,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,11 +70,6 @@ def overdue_condition(today: date) -> ColumnElement[bool]:
         Assignment.due_date < today,
         Assignment.status != AssignmentStatus.DONE,
     )
-
-
-def visible_condition(user: User) -> ColumnElement[bool]:
-    """SQL condition restricting assignments to projects the user belongs to."""
-    return Assignment.project_id.in_(member_project_ids(user))
 
 
 def _comment_count_subquery() -> Any:
@@ -232,6 +227,20 @@ def _response_for(db: Session, assignment_id: int, user: User) -> AssignmentResp
     return build_assignment_response(assignment, count, utc_today())
 
 
+def _response_unchecked(db: Session, assignment_id: int) -> AssignmentResponse:
+    """Response for an assignment the caller was just authorized to change.
+
+    Used after a reassignment: handing a task to someone else can remove it from the
+    caller's view, but they should still get the result of the change they made.
+    """
+    row = db.execute(
+        select_assignments_with_counts()
+        .where(Assignment.id == assignment_id)
+        .execution_options(populate_existing=True)
+    ).one()
+    return build_assignment_response(row[0], int(row[1]), utc_today())
+
+
 def get_assignment(db: Session, assignment_id: int, user: User) -> AssignmentResponse:
     return _response_for(db, assignment_id, user)
 
@@ -344,4 +353,4 @@ def update_assignee(
     assignment.assignee_id = assignee_id
     db.commit()
     logger.info("User %s set assignee of %s to %s", user.id, assignment_id, assignee_id)
-    return _response_for(db, assignment_id, user)
+    return _response_unchecked(db, assignment_id)

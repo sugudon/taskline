@@ -68,7 +68,7 @@ export function DashboardPage() {
       ) : (
         <>
           <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={5} mb={6}>
-            <StatCard label="Total" value={data.total} to="/assignments" icon="📋" helpText="Across all projects" />
+            <StatCard label="Total" value={data.total} to="/assignments" icon="📋" helpText="Visible to you" />
             <StatCard
               label="In progress"
               value={data.by_status.in_progress}

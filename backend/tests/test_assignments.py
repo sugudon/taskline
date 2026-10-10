@@ -180,10 +180,13 @@ def test_get_assignment_with_comment_count(
 ) -> None:
     assignment = make_assignment(team["project"], creator=team["creator"])
     make_comment(assignment, team["owner"])
-    make_comment(assignment, team["bystander"])
-    response = client.get(f"{API}/{assignment.id}", headers=auth_headers(team["bystander"]))
+    make_comment(assignment, team["creator"])
+    response = client.get(f"{API}/{assignment.id}", headers=auth_headers(team["creator"]))
     assert response.status_code == 200
     assert response.json()["comment_count"] == 2
+    # A member with no link to the task cannot see it.
+    hidden = client.get(f"{API}/{assignment.id}", headers=auth_headers(team["bystander"]))
+    assert hidden.status_code == 404
 
 
 def test_get_assignment_non_member_and_missing_404(
@@ -203,11 +206,15 @@ def test_get_assignment_non_member_and_missing_404(
 def test_list_scoped_to_member_projects(
     client: TestClient, team: dict[str, Any], auth_headers: Headers, make_assignment: MakeAssignment
 ) -> None:
-    mine = make_assignment(team["project"])
+    mine = make_assignment(team["project"], assignee=team["bystander"])
+    teammates = make_assignment(team["project"], assignee=team["assignee"])
     make_assignment(team["outsider_project"])
     body = client.get(API, headers=auth_headers(team["bystander"])).json()
     assert [i["id"] for i in body["items"]] == [mine.id]
     assert body["total"] == 1
+    # The Scrum master sees everything in their project.
+    owner_body = client.get(API, headers=auth_headers(team["owner"])).json()
+    assert {i["id"] for i in owner_body["items"]} == {mine.id, teammates.id}
 
 
 @pytest.fixture
@@ -304,11 +311,20 @@ def test_list_filter_mine(
     assert _ids(assignee_mine) == [catalog["a"].id]
 
 
-def test_list_bystander_sees_only_team_project(
+def test_list_members_see_only_their_own_assignments(
     client: TestClient, catalog: dict[str, Any], auth_headers: Headers
 ) -> None:
-    body = client.get(API, headers=auth_headers(catalog["bystander"])).json()
-    assert set(i["id"] for i in body["items"]) == {catalog[k].id for k in ("a", "b", "c")}
+    def visible(who: str) -> set[int]:
+        return {
+            i["id"] for i in client.get(API, headers=auth_headers(catalog[who])).json()["items"]
+        }
+
+    # Nothing is assigned to or created by the bystander.
+    assert visible("bystander") == set()
+    # The assignee sees only their tasks ("a" and "c"), not "b" (unassigned) or "d".
+    assert visible("assignee") == {catalog["a"].id, catalog["c"].id}
+    # The Scrum master owns both projects and sees everything.
+    assert visible("owner") == {catalog[k].id for k in ("a", "b", "c", "d")}
 
 
 # ---------- list: sorting ----------
@@ -457,7 +473,8 @@ def test_update_forbidden_for_other_member(
     response = client.put(
         f"{API}/{assignment.id}", headers=auth_headers(team["bystander"]), json={"title": "x"}
     )
-    assert response.status_code == 403
+    # Unrelated members cannot even see the task.
+    assert response.status_code == 404
 
 
 def test_update_non_member_404(
@@ -544,7 +561,7 @@ def test_delete_allowed(
 
 
 @pytest.mark.parametrize(
-    ("actor", "expected"), [("assignee", 403), ("bystander", 403), ("outsider", 404)]
+    ("actor", "expected"), [("assignee", 403), ("bystander", 404), ("outsider", 404)]
 )
 def test_delete_denied(
     client: TestClient,
@@ -567,8 +584,10 @@ def test_delete_denied(
 def test_status_transitions_manage_completed_at(
     client: TestClient, team: dict[str, Any], auth_headers: Headers, make_assignment: MakeAssignment
 ) -> None:
-    assignment = make_assignment(team["project"], due_date=TODAY - timedelta(days=1))
-    headers = auth_headers(team["bystander"])  # any member may change status
+    assignment = make_assignment(
+        team["project"], due_date=TODAY - timedelta(days=1), assignee=team["assignee"]
+    )
+    headers = auth_headers(team["assignee"])  # anyone who can see the task may change status
     url = f"{API}/{assignment.id}/status"
 
     done = client.patch(url, headers=headers, json={"status": "done"}).json()
@@ -646,12 +665,11 @@ def test_reassign_allowed_for_scrum_master_creator_and_assignee(
     assert passed_on.status_code == 200
     assert passed_on.json()["assignee"]["id"] == team["bystander"].id
 
-    # Once it has moved on, the previous assignee can no longer reassign it.
-    denied = client.patch(
+    # Once it has moved on, the previous assignee no longer sees it at all.
+    gone = client.patch(
         url, headers=auth_headers(team["assignee"]), json={"assignee_id": team["assignee"].id}
     )
-    assert denied.status_code == 403
-    assert "current assignee" in denied.json()["detail"]
+    assert gone.status_code == 404
 
     # Non-members still get 404, not 403.
     hidden = client.patch(url, headers=auth_headers(team["outsider"]), json={"assignee_id": None})
@@ -706,7 +724,9 @@ def test_assignee_non_member_caller_404_and_validation(
 def test_comments_crud(
     client: TestClient, team: dict[str, Any], auth_headers: Headers, make_assignment: MakeAssignment
 ) -> None:
-    assignment = make_assignment(team["project"])
+    assignment = make_assignment(
+        team["project"], creator=team["creator"], assignee=team["bystander"]
+    )
     url = f"{API}/{assignment.id}/comments"
     first = client.post(url, headers=auth_headers(team["bystander"]), json={"body": "  First  "})
     assert first.status_code == 201

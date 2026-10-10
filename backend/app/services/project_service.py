@@ -22,6 +22,7 @@ from app.services.access import (
     member_project_ids,
     require_not_archived,
     require_owner,
+    visible_condition,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,8 +37,11 @@ class ProjectCounts:
     open_assignment_count: int = 0
 
 
-def _projects_with_counts_stmt() -> Select:
-    """SELECT Project plus member/assignment/open-assignment counts via grouped subqueries."""
+def _projects_with_counts_stmt(user: User) -> Select:
+    """SELECT Project plus member/assignment/open-assignment counts via grouped subqueries.
+
+    Assignment counts only include assignments `user` is allowed to see.
+    """
     member_sq = (
         select(
             ProjectMember.project_id.label("project_id"),
@@ -54,6 +58,7 @@ def _projects_with_counts_stmt() -> Select:
                 func.sum(case((Assignment.status != AssignmentStatus.DONE, 1), else_=0)), 0
             ).label("open_assignment_count"),
         )
+        .where(visible_condition(user))
         .group_by(Assignment.project_id)
         .subquery()
     )
@@ -95,8 +100,8 @@ def _row_counts(row: Row) -> ProjectCounts:
     return ProjectCounts(int(row[1]), int(row[2]), int(row[3]))
 
 
-def _get_counts(db: Session, project_id: int) -> ProjectCounts:
-    row = db.execute(_projects_with_counts_stmt().where(Project.id == project_id)).first()
+def _get_counts(db: Session, project_id: int, user: User) -> ProjectCounts:
+    row = db.execute(_projects_with_counts_stmt(user).where(Project.id == project_id)).first()
     if row is None:
         return ProjectCounts()
     return _row_counts(row)
@@ -117,8 +122,8 @@ def _list_member_models(db: Session, project_id: int) -> list[ProjectMember]:
     return list(db.scalars(stmt).all())
 
 
-def _build_detail(db: Session, project: Project) -> ProjectDetail:
-    counts = _get_counts(db, project.id)
+def _build_detail(db: Session, project: Project, user: User) -> ProjectDetail:
+    counts = _get_counts(db, project.id, user)
     members = [ProjectMemberResponse.model_validate(m) for m in _list_member_models(db, project.id)]
     return ProjectDetail(
         **_base_fields(project),
@@ -130,7 +135,7 @@ def _build_detail(db: Session, project: Project) -> ProjectDetail:
 
 
 def list_projects(db: Session, user: User, include_archived: bool = False) -> list[ProjectResponse]:
-    stmt = _projects_with_counts_stmt().where(Project.id.in_(member_project_ids(db, user)))
+    stmt = _projects_with_counts_stmt(user).where(Project.id.in_(member_project_ids(db, user)))
     if not include_archived:
         stmt = stmt.where(Project.is_archived.is_(False))
     stmt = stmt.order_by(Project.created_at.desc(), Project.id.desc())
@@ -150,12 +155,12 @@ def create_project(db: Session, user: User, data: ProjectCreate) -> ProjectDetai
     db.commit()
     db.refresh(project)
     logger.info("User %s created project %s", user.id, project.id)
-    return _build_detail(db, project)
+    return _build_detail(db, project, user)
 
 
 def get_project_detail(db: Session, user: User, project_id: int) -> ProjectDetail:
     project = get_project_for_member(db, project_id, user)
-    return _build_detail(db, project)
+    return _build_detail(db, project, user)
 
 
 def update_project(db: Session, user: User, project_id: int, data: ProjectUpdate) -> ProjectDetail:
@@ -169,7 +174,7 @@ def update_project(db: Session, user: User, project_id: int, data: ProjectUpdate
     db.commit()
     db.refresh(project)
     logger.info("User %s updated project %s (fields=%s)", user.id, project.id, sorted(changes))
-    return _build_detail(db, project)
+    return _build_detail(db, project, user)
 
 
 def delete_project(db: Session, user: User, project_id: int) -> None:

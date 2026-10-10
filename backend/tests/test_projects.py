@@ -130,12 +130,15 @@ def test_get_project_detail(
     owner = make_user()
     member = make_user()
     project = make_project(owner, members=[member])
-    make_assignment(project)
+    make_assignment(project, assignee=member)
+    make_assignment(project)  # not the member's: hidden from their counts
     response = client.get(f"{API}/{project.id}", headers=auth_headers(member))
     assert response.status_code == 200
     body = response.json()
     assert body["assignment_count"] == 1
     assert body["open_assignment_count"] == 1
+    owner_body = client.get(f"{API}/{project.id}", headers=auth_headers(owner)).json()
+    assert owner_body["assignment_count"] == 2
     roles = [m["role"] for m in body["members"]]
     assert roles == ["owner", "member"]  # owner listed first
     assert body["members"][1]["user"]["email"] == member.email

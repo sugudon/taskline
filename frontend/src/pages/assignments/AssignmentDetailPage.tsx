@@ -181,13 +181,22 @@ export function AssignmentDetailPage() {
                 Details
               </Heading>
               <StatusSelect assignment={assignment} isDisabled={isArchived} />
-              <AssigneeSelect assignment={assignment} isDisabled={isArchived || !canReassign} />
+              <AssigneeSelect
+                assignment={assignment}
+                isDisabled={isArchived || !canReassign}
+                onReassigned={(newAssigneeId) => {
+                  // Team members only see their own tasks: passing it on removes it from view.
+                  if (!isOwner && !isCreator && newAssigneeId !== user?.id) {
+                    navigate('/dashboard', { replace: true });
+                  }
+                }}
+              />
               <Text fontSize="xs" color="text.muted">
                 {isArchived
                   ? 'This project is archived, so status and assignee can no longer be changed.'
                   : canReassign
-                    ? 'Any project member can change the status. You can reassign this task.'
-                    : 'Any project member can change the status. Only the Scrum master, the task creator or the current assignee can reassign it.'}
+                    ? 'You can change the status and reassign this task.'
+                    : 'You can change the status. Only the Scrum master, the task creator or the current assignee can reassign it.'}
               </Text>
             </Stack>
           </GlassCard>

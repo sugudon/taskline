@@ -9,7 +9,7 @@ import logging
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.config import settings
@@ -35,7 +35,7 @@ from app.schemas.ai import (
 )
 from app.schemas.assignment import DESCRIPTION_MAX_LENGTH, AssignmentResponse
 from app.services import llm
-from app.services.access import get_project_for_member, require_not_archived
+from app.services.access import get_project_for_member, require_not_archived, visible_condition
 from app.services.assignment_service import (
     responses_from_rows,
     select_assignments_with_counts,
@@ -109,12 +109,13 @@ def _members(db: Session, project_id: int) -> list[ProjectMember]:
     )
 
 
-def _assignments(db: Session, project_id: int) -> list[Assignment]:
+def _assignments(db: Session, project_id: int, user: User) -> list[Assignment]:
+    """Assignments in the project that `user` may see (Scrum master: all; member: own)."""
     return list(
         db.scalars(
             select(Assignment)
             .options(joinedload(Assignment.assignee))
-            .where(Assignment.project_id == project_id)
+            .where(Assignment.project_id == project_id, visible_condition(user))
             .order_by(Assignment.created_at.desc())
             .limit(MAX_CONTEXT_ASSIGNMENTS)
         )
@@ -148,11 +149,21 @@ def generate_plan(db: Session, user: User, project_id: int, req: PlanRequest) ->
     today = utc_today()
     members = _members(db, project.id)
     member_ids = {m.user_id for m in members}
-    open_counts: dict[int, int] = {}
-    existing = _assignments(db, project.id)
-    for a in existing:
-        if a.assignee_id and a.status != AssignmentStatus.DONE:
-            open_counts[a.assignee_id] = open_counts.get(a.assignee_id, 0) + 1
+    # Per-member open workload is an aggregate number, so it covers the whole project;
+    # titles/details are limited to what the requesting user may see.
+    open_counts: dict[int, int] = {
+        int(assignee_id or 0): int(count)
+        for assignee_id, count in db.execute(
+            select(Assignment.assignee_id, func.count(Assignment.id))
+            .where(
+                Assignment.project_id == project.id,
+                Assignment.assignee_id.is_not(None),
+                Assignment.status != AssignmentStatus.DONE,
+            )
+            .group_by(Assignment.assignee_id)
+        )
+    }
+    existing = _assignments(db, project.id, user)
 
     payload = {
         "today": today.isoformat(),
@@ -250,13 +261,13 @@ def generate_report(db: Session, user: User, project_id: int) -> ProjectReport:
     _require_enabled()
 
     today = utc_today()
-    assignments = _assignments(db, project.id)
+    assignments = _assignments(db, project.id, user)
     comments = list(
         db.scalars(
             select(Comment)
             .options(joinedload(Comment.author), joinedload(Comment.assignment))
             .join(Assignment, Comment.assignment_id == Assignment.id)
-            .where(Assignment.project_id == project.id)
+            .where(Assignment.project_id == project.id, visible_condition(user))
             .order_by(Comment.created_at.desc())
             .limit(MAX_CONTEXT_COMMENTS)
         )

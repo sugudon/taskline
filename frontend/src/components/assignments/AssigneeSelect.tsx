@@ -9,9 +9,11 @@ export interface AssigneeSelectProps {
   assignment: AssignmentResponse;
   /** e.g. when the project is archived (read-only). */
   isDisabled?: boolean;
+  /** Called with the new assignee id (or null) after a successful change. */
+  onReassigned?: (assigneeId: number | null) => void;
 }
 
-export function AssigneeSelect({ assignment, isDisabled = false }: AssigneeSelectProps) {
+export function AssigneeSelect({ assignment, isDisabled = false, onReassigned }: AssigneeSelectProps) {
   const toast = useToast();
   const { data: members, isLoading } = useProjectMembers(assignment.project_id);
   const updateAssignee = useUpdateAssignee(assignment.id);
@@ -33,6 +35,7 @@ export function AssigneeSelect({ assignment, isDisabled = false }: AssigneeSelec
           title: data.assignee ? `Assigned to ${userDisplayName(data.assignee)}` : 'Assignment unassigned',
           duration: 2500,
         });
+        onReassigned?.(data.assignee?.id ?? null);
       },
       onError: (err) => {
         toast({ status: 'error', title: 'Could not change assignee', description: getErrorMessage(err) });

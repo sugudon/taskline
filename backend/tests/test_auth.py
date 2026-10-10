@@ -498,18 +498,19 @@ def test_delete_me_preserves_authored_work_in_others_projects(
         f"/api/v1/projects/{shared.id}/members", headers=owner_h, json={"email": member.email}
     )
     member_h = auth_headers(member)
+    # Unrelated members cannot see the ownerless task at all.
     assert (
         client.put(
             f"/api/v1/assignments/{authored_id}", headers=member_h, json={"title": "x"}
         ).status_code
-        == 403
+        == 404
     )
-    assert client.delete(f"/api/v1/assignments/{authored_id}", headers=member_h).status_code == 403
+    assert client.delete(f"/api/v1/assignments/{authored_id}", headers=member_h).status_code == 404
     assert (
         client.delete(
             f"/api/v1/assignments/{authored_id}/comments/{comment_id}", headers=member_h
         ).status_code
-        == 403
+        == 404
     )
     assert (
         client.put(

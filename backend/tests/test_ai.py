@@ -417,3 +417,29 @@ def test_llm_generate_errors(
 def test_llm_generate_disabled() -> None:
     with pytest.raises(llm.AIDisabledError):
         llm.generate("sys", "user", _Out)
+
+
+def test_report_for_member_only_includes_their_own_work(
+    client: TestClient,
+    make_user: Callable[..., User],
+    make_project: Callable[..., Project],
+    make_assignment: Callable[..., Any],
+    auth_headers: Headers,
+    ai_enabled: None,
+    fake_llm: dict[str, Any],
+) -> None:
+    owner, member, _, project = _setup(make_user, make_project)
+    make_assignment(project, title="Member task", assignee=member)
+    make_assignment(project, title="Scrum master secret task", assignee=owner)
+    fake_llm["result"] = LLMReport(
+        headline="x", completed=[], in_progress=[], at_risk=[], next_steps=[], workload=[]
+    )
+
+    client.post(f"/api/v1/ai/projects/{project.id}/report", headers=auth_headers(member))
+    member_prompt = fake_llm["calls"][-1][1]
+    assert "Member task" in member_prompt
+    assert "Scrum master secret task" not in member_prompt
+
+    client.post(f"/api/v1/ai/projects/{project.id}/report", headers=auth_headers(owner))
+    owner_prompt = fake_llm["calls"][-1][1]
+    assert "Member task" in owner_prompt and "Scrum master secret task" in owner_prompt

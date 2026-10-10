@@ -36,4 +36,7 @@ def test_has_password(make_user: MakeUser) -> None:
 
 
 def test_counts_for_missing_project_are_zero(db: Session) -> None:
-    assert project_service._get_counts(db, 12345) == project_service.ProjectCounts()
+    viewer = User(email="viewer@example.com")
+    db.add(viewer)
+    db.commit()
+    assert project_service._get_counts(db, 12345, viewer) == project_service.ProjectCounts()

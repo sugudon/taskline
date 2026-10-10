@@ -75,11 +75,20 @@ def test_dashboard_counts_and_lists(
     c1 = make_comment(due_today, teammate, body="first")
     c2 = make_comment(overdue_old, me, body="second")
 
-    body = client.get(API, headers=auth_headers(me)).json()
+    # The Scrum master (project owner) sees the whole project.
+    body = client.get(API, headers=auth_headers(teammate)).json()
     assert body["total"] == 8
     assert body["by_status"] == {"todo": 4, "in_progress": 1, "in_review": 1, "done": 2}
     assert body["overdue_count"] == 2
-    assert body["assigned_to_me_count"] == 2
+    assert body["assigned_to_me_count"] == 0
+
+    # A team member only sees work assigned to (or created by) them.
+    mine = client.get(API, headers=auth_headers(me)).json()
+    assert mine["total"] == 2
+    assert mine["assigned_to_me_count"] == 2
+    assert [a["id"] for a in mine["due_this_week"]] == [due_today.id]
+    assert [a["id"] for a in mine["overdue"]] == [overdue_old.id]
+    assert [c["id"] for c in mine["recent_comments"]] == [c2.id, c1.id]
 
     assert [a["id"] for a in body["due_this_week"]] == [due_today.id, due_in_7.id]
     assert [a["id"] for a in body["overdue"]] == [overdue_old.id, overdue_new.id]
@@ -210,3 +219,22 @@ def test_reassignment_moves_task_between_dashboards(
     assert response.status_code == 200
     assert mine(alice) == []
     assert mine(bob) == ["Write tests"]
+
+
+def test_member_sees_tasks_they_created_for_others(
+    client: TestClient,
+    make_user: MakeUser,
+    auth_headers: Headers,
+    make_project: MakeProject,
+    make_assignment: MakeAssignment,
+) -> None:
+    scrum_master, alice, bob = make_user(), make_user(), make_user()
+    project = make_project(scrum_master, members=[alice, bob])
+    delegated = make_assignment(project, title="Delegated", creator=alice, assignee=bob)
+    make_assignment(project, title="Bob's own", creator=bob, assignee=bob)
+
+    alice_view = client.get("/api/v1/assignments", headers=auth_headers(alice)).json()
+    assert [a["id"] for a in alice_view["items"]] == [delegated.id]
+    assert client.get(API, headers=auth_headers(alice)).json()["my_assignments"] == []
+    bob_view = client.get("/api/v1/assignments", headers=auth_headers(bob)).json()
+    assert bob_view["total"] == 2
