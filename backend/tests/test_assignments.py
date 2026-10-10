@@ -614,7 +614,7 @@ def test_assignee_set_and_clear(
     assert cleared["assignee"] is None
 
 
-def test_reassign_allowed_for_scrum_master_and_creator_only(
+def test_reassign_allowed_for_scrum_master_creator_and_assignee(
     client: TestClient, team: dict[str, Any], auth_headers: Headers, make_assignment: MakeAssignment
 ) -> None:
     assignment = make_assignment(
@@ -635,13 +635,23 @@ def test_reassign_allowed_for_scrum_master_and_creator_only(
     )
     assert by_owner.status_code == 200
 
-    # Other members, including the current assignee, cannot reassign.
-    for who in ("bystander", "assignee"):
-        denied = client.patch(
-            url, headers=auth_headers(team[who]), json={"assignee_id": team[who].id}
-        )
-        assert denied.status_code == 403
-        assert "Scrum master" in denied.json()["detail"]
+    # The current assignee (now the owner) can pass it on to someone else.
+    by_assignee = client.patch(
+        url, headers=auth_headers(team["owner"]), json={"assignee_id": team["assignee"].id}
+    )
+    assert by_assignee.status_code == 200
+    passed_on = client.patch(
+        url, headers=auth_headers(team["assignee"]), json={"assignee_id": team["bystander"].id}
+    )
+    assert passed_on.status_code == 200
+    assert passed_on.json()["assignee"]["id"] == team["bystander"].id
+
+    # Once it has moved on, the previous assignee can no longer reassign it.
+    denied = client.patch(
+        url, headers=auth_headers(team["assignee"]), json={"assignee_id": team["assignee"].id}
+    )
+    assert denied.status_code == 403
+    assert "current assignee" in denied.json()["detail"]
 
     # Non-members still get 404, not 403.
     hidden = client.patch(url, headers=auth_headers(team["outsider"]), json={"assignee_id": None})

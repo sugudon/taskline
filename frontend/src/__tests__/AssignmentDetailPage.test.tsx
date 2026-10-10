@@ -154,19 +154,30 @@ describe('AssignmentDetailPage', () => {
     expect(await screen.findByText('Kaboom')).toBeInTheDocument();
   });
 
-  it('lets only the Scrum master or the task creator reassign', async () => {
-    // Bob (id 2) is a plain member and did not create the task: the select is locked.
-    setup({ assignment: makeAssignment({ id: 5, created_by: ada, assignee: bob }) });
+  it('locks reassignment for members who are not the Scrum master, creator or assignee', async () => {
+    // Bob (id 2) is a plain member, did not create the task and is not its assignee.
+    setup({ assignment: makeAssignment({ id: 5, created_by: ada, assignee: ada }) });
     renderPage(2);
     const locked = await screen.findByLabelText('Assignee');
     expect(locked).toBeDisabled();
     expect(
-      screen.getByText(/Only the Scrum master or the task creator can reassign it/),
+      screen.getByText(/Only the Scrum master, the task creator or the current assignee can reassign it/),
     ).toBeInTheDocument();
   });
 
+  it('lets the current assignee pass the task on', async () => {
+    setup({ assignment: makeAssignment({ id: 5, created_by: ada, assignee: bob }) });
+    mockApi.patch.mockResolvedValue({ data: makeAssignment({ id: 5, assignee: ada }) });
+    renderPage(2);
+    const select = await screen.findByLabelText('Assignee');
+    await waitFor(() => expect(select).toBeEnabled());
+    await waitFor(() => expect(within(select).getByRole('option', { name: 'Ada Lovelace' })).toBeInTheDocument());
+    await userEvent.setup().selectOptions(select, '1');
+    await waitFor(() => expect(mockApi.patch).toHaveBeenCalledWith('/assignments/5/assignee', { assignee_id: 1 }));
+  });
+
   it('lets a member who created the task reassign it', async () => {
-    setup({ assignment: makeAssignment({ id: 5, created_by: bob, assignee: bob }) });
+    setup({ assignment: makeAssignment({ id: 5, created_by: bob, assignee: ada }) });
     renderPage(2);
     const select = await screen.findByLabelText('Assignee');
     await waitFor(() => expect(select).toBeEnabled());

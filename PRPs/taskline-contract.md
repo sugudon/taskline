@@ -115,7 +115,7 @@ Refresh tokens are JWTs with a `jti`; the DB stores `sha256(token)` in `refresh_
 | PUT | /assignments/{id} | AssignmentUpdate | AssignmentResponse (creator/assignee/project owner) |
 | DELETE | /assignments/{id} | – | 204 (creator/project owner) |
 | PATCH | /assignments/{id}/status | StatusUpdate | AssignmentResponse (any member; done sets completed_at, leaving done clears it) |
-| PATCH | /assignments/{id}/assignee | AssigneeUpdate | AssignmentResponse (project owner a.k.a. Scrum master, or the task's creator → else 403; assignee must be member → 400) |
+| PATCH | /assignments/{id}/assignee | AssigneeUpdate | AssignmentResponse (project owner a.k.a. Scrum master, the task's creator, or the current assignee → else 403; assignee must be member → 400) |
 | GET | /assignments/{id}/comments | – | CommentResponse[] (oldest first) |
 | POST | /assignments/{id}/comments | CommentCreate | 201 CommentResponse |
 | DELETE | /assignments/{id}/comments/{comment_id} | – | 204 (author only) |
