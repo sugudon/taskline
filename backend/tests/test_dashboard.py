@@ -1,0 +1,138 @@
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+
+from fastapi.testclient import TestClient
+
+from app.models import Assignment, AssignmentStatus, Comment, Project, User
+
+API = "/api/v1/dashboard/summary"
+
+MakeUser = Callable[..., User]
+Headers = Callable[[User], dict[str, str]]
+MakeProject = Callable[..., Project]
+MakeAssignment = Callable[..., Assignment]
+MakeComment = Callable[..., Comment]
+
+TODAY = datetime.now(UTC).date()
+
+
+def test_dashboard_requires_auth(client: TestClient) -> None:
+    assert client.get(API).status_code == 401
+
+
+def test_dashboard_empty(client: TestClient, make_user: MakeUser, auth_headers: Headers) -> None:
+    body = client.get(API, headers=auth_headers(make_user())).json()
+    assert body == {
+        "total": 0,
+        "by_status": {"todo": 0, "in_progress": 0, "in_review": 0, "done": 0},
+        "overdue_count": 0,
+        "assigned_to_me_count": 0,
+        "due_this_week": [],
+        "overdue": [],
+        "recent_comments": [],
+    }
+
+
+def test_dashboard_counts_and_lists(
+    client: TestClient,
+    make_user: MakeUser,
+    auth_headers: Headers,
+    make_project: MakeProject,
+    make_assignment: MakeAssignment,
+    make_comment: MakeComment,
+) -> None:
+    me = make_user()
+    teammate = make_user()
+    stranger = make_user()
+    project = make_project(teammate, members=[me])
+    hidden_project = make_project(stranger)
+
+    due_today = make_assignment(project, title="today", due_date=TODAY, assignee=me)
+    due_in_7 = make_assignment(project, title="in7", due_date=TODAY + timedelta(days=7))
+    make_assignment(project, title="in8", due_date=TODAY + timedelta(days=8))
+    overdue_old = make_assignment(
+        project,
+        title="old",
+        due_date=TODAY - timedelta(days=5),
+        status=AssignmentStatus.IN_PROGRESS,
+        assignee=me,
+    )
+    overdue_new = make_assignment(
+        project, title="new", due_date=TODAY - timedelta(days=1), status=AssignmentStatus.IN_REVIEW
+    )
+    make_assignment(
+        project, title="done-late", due_date=TODAY - timedelta(days=2), status=AssignmentStatus.DONE
+    )
+    make_assignment(
+        project, title="done-soon", due_date=TODAY + timedelta(days=1), status=AssignmentStatus.DONE
+    )
+    make_assignment(project, title="no-date")
+    # Invisible to `me`.
+    secret = make_assignment(hidden_project, title="secret", due_date=TODAY - timedelta(days=1))
+    make_comment(secret, stranger, body="hidden")
+
+    c1 = make_comment(due_today, teammate, body="first")
+    c2 = make_comment(overdue_old, me, body="second")
+
+    body = client.get(API, headers=auth_headers(me)).json()
+    assert body["total"] == 8
+    assert body["by_status"] == {"todo": 4, "in_progress": 1, "in_review": 1, "done": 2}
+    assert body["overdue_count"] == 2
+    assert body["assigned_to_me_count"] == 2
+
+    assert [a["id"] for a in body["due_this_week"]] == [due_today.id, due_in_7.id]
+    assert [a["id"] for a in body["overdue"]] == [overdue_old.id, overdue_new.id]
+    assert all(a["is_overdue"] for a in body["overdue"])
+    assert body["overdue"][0]["project_name"] == project.name
+    assert body["overdue"][0]["comment_count"] == 1
+
+    recent = body["recent_comments"]
+    assert [c["id"] for c in recent] == [c2.id, c1.id]  # newest first
+    assert recent[0]["assignment_title"] == "old"
+    assert recent[0]["assignment_id"] == overdue_old.id
+    assert recent[0]["author"]["id"] == me.id
+    assert recent[1]["body"] == "first"
+
+
+def test_dashboard_lists_capped_at_ten(
+    client: TestClient,
+    make_user: MakeUser,
+    auth_headers: Headers,
+    make_project: MakeProject,
+    make_assignment: MakeAssignment,
+    make_comment: MakeComment,
+) -> None:
+    me = make_user()
+    project = make_project(me)
+    for i in range(12):
+        make_assignment(project, title=f"soon{i}", due_date=TODAY + timedelta(days=i % 7))
+        late = make_assignment(project, title=f"late{i}", due_date=TODAY - timedelta(days=i + 1))
+        make_comment(late, me, body=f"c{i}")
+    body = client.get(API, headers=auth_headers(me)).json()
+    assert body["total"] == 24
+    assert body["overdue_count"] == 12
+    assert len(body["due_this_week"]) == 10
+    assert len(body["overdue"]) == 10
+    assert len(body["recent_comments"]) == 10
+    dues = [a["due_date"] for a in body["due_this_week"]]
+    assert dues == sorted(dues)
+    overdue_dues = [a["due_date"] for a in body["overdue"]]
+    assert overdue_dues == sorted(overdue_dues)  # most overdue first
+
+
+def test_dashboard_scoped_per_user(
+    client: TestClient,
+    make_user: MakeUser,
+    auth_headers: Headers,
+    make_project: MakeProject,
+    make_assignment: MakeAssignment,
+) -> None:
+    alice = make_user()
+    bob = make_user()
+    make_assignment(make_project(alice), assignee=alice)
+    make_assignment(make_project(bob))
+    make_assignment(make_project(bob))
+    assert client.get(API, headers=auth_headers(alice)).json()["total"] == 1
+    bob_body = client.get(API, headers=auth_headers(bob)).json()
+    assert bob_body["total"] == 2
+    assert bob_body["assigned_to_me_count"] == 0
