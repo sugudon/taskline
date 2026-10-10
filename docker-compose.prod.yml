@@ -1,5 +1,11 @@
-# Production stack for a single VPS: Caddy (HTTPS) -> frontend (nginx) + backend (FastAPI) -> Postgres.
-# The app and API share one origin: https://$DOMAIN serves the SPA, https://$DOMAIN/api/* the API.
+# Production stack: frontend (nginx) + backend (FastAPI) + Postgres on one origin.
+# https://$DOMAIN serves the SPA, https://$DOMAIN/api/* the API.
+#
+# HTTPS is terminated by a reverse proxy:
+#   - default: an existing Traefik on the host (docker provider, `websecure` entrypoint,
+#     `letsencrypt` cert resolver) picks up the labels below — no ports are published.
+#   - no Traefik on the server: enable the bundled Caddy with COMPOSE_PROFILES=caddy
+#     (binds :80/:443, needs ACME_EMAIL).
 # Usage on the server:  docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 
 name: taskline
@@ -7,6 +13,7 @@ name: taskline
 services:
   caddy:
     image: caddy:2.8-alpine
+    profiles: ["caddy"]
     restart: unless-stopped
     ports:
       - "80:80"
@@ -14,7 +21,7 @@ services:
       - "443:443/udp"
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env.production}
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL in .env.production}
+      ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
@@ -55,6 +62,15 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.taskline-api.rule: Host(`${DOMAIN}`) && (PathPrefix(`/api/`) || Path(`/health`) || PathPrefix(`/docs`) || Path(`/openapi.json`))
+      traefik.http.routers.taskline-api.priority: "100"
+      traefik.http.routers.taskline-api.entrypoints: websecure
+      traefik.http.routers.taskline-api.tls.certresolver: letsencrypt
+      traefik.http.routers.taskline-api.middlewares: taskline-hsts,taskline-compress
+      traefik.http.routers.taskline-api.service: taskline-api
+      traefik.http.services.taskline-api.loadbalancer.server.port: "8000"
 
   frontend:
     build:
@@ -67,6 +83,18 @@ services:
       API_ORIGIN: https://${DOMAIN}
     depends_on:
       - backend
+    labels:
+      traefik.enable: "true"
+      traefik.http.routers.taskline-web.rule: Host(`${DOMAIN}`)
+      traefik.http.routers.taskline-web.priority: "10"
+      traefik.http.routers.taskline-web.entrypoints: websecure
+      traefik.http.routers.taskline-web.tls.certresolver: letsencrypt
+      traefik.http.routers.taskline-web.middlewares: taskline-hsts,taskline-compress
+      traefik.http.routers.taskline-web.service: taskline-web
+      traefik.http.services.taskline-web.loadbalancer.server.port: "3000"
+      traefik.http.middlewares.taskline-hsts.headers.stsSeconds: "31536000"
+      traefik.http.middlewares.taskline-hsts.headers.stsIncludeSubdomains: "true"
+      traefik.http.middlewares.taskline-compress.compress: "true"
 
 volumes:
   postgres_data:

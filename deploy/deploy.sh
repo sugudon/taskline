@@ -3,15 +3,19 @@
 #
 #   deploy/deploy.sh root@<vps-ip> [acme-email]
 #
-# First run: installs Docker (if missing), uploads the code to /opt/taskline,
-# generates /opt/taskline/.env.production with random secrets, builds and starts the stack.
+# HTTPS: by default relies on an existing Traefik on the server (see docker-compose.prod.yml).
+# On a server without Traefik run with COMPOSE_PROFILES=caddy and pass an acme-email.
+#
+# First run: installs Docker (if missing), uploads the code to /docker/taskline,
+# generates /docker/taskline/.env.production with random secrets, builds and starts the stack.
 # Later runs: re-upload code and rebuild; the existing .env.production and database are kept.
 set -euo pipefail
 
 TARGET="${1:?usage: deploy/deploy.sh user@host [acme-email]}"
 ACME_EMAIL="${2:-}"
 DOMAIN="${DOMAIN:-taskline.sugunajayaram.tech}"
-REMOTE_DIR="${REMOTE_DIR:-/opt/taskline}"
+REMOTE_DIR="${REMOTE_DIR:-/docker/taskline}"
+COMPOSE_PROFILES="${COMPOSE_PROFILES:-}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 echo "==> Checking SSH access to $TARGET"
@@ -31,7 +35,7 @@ rsync -az --delete \
 
 echo "==> Creating .env.production (only if missing)"
 ssh "$TARGET" "cd '$REMOTE_DIR' && if [ ! -f .env.production ]; then
-  [ -n '$ACME_EMAIL' ] || { echo 'First deploy needs an ACME email: deploy/deploy.sh $TARGET you@example.com' >&2; exit 1; }
+  case ',$COMPOSE_PROFILES,' in *,caddy,*) [ -n '$ACME_EMAIL' ] || { echo 'Caddy needs an ACME email: deploy/deploy.sh $TARGET you@example.com' >&2; exit 1; } ;; esac
   sed -e 's|^DOMAIN=.*|DOMAIN=$DOMAIN|' \
       -e 's|^ACME_EMAIL=.*|ACME_EMAIL=$ACME_EMAIL|' \
       -e \"s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=\$(openssl rand -hex 24)|\" \
@@ -42,7 +46,7 @@ ssh "$TARGET" "cd '$REMOTE_DIR' && if [ ! -f .env.production ]; then
 fi"
 
 echo "==> Building and starting the stack"
-ssh "$TARGET" "cd '$REMOTE_DIR' && docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build --remove-orphans"
+ssh "$TARGET" "cd '$REMOTE_DIR' && COMPOSE_PROFILES='$COMPOSE_PROFILES' docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build --remove-orphans"
 
 echo "==> Waiting for https://$DOMAIN/health"
 for _ in $(seq 1 60); do
