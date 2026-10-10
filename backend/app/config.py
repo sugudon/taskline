@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     CORS_ORIGINS: str = "http://localhost:5173"
     LOG_LEVEL: str = "INFO"
     RATE_LIMIT_ENABLED: bool = True
+    # AI features (OpenAI). Disabled when OPENAI_API_KEY is empty.
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4.1-mini"
+    OPENAI_TIMEOUT_SECONDS: float = 60.0
+    AI_DAILY_LIMIT: int = 30
 
     @field_validator("SECRET_KEY")
     @classmethod

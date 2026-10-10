@@ -219,8 +219,12 @@ def test_migrations_upgrade_check_downgrade(
         assert fks["fk_comments_author_id_users"]["options"].get("ondelete") == "SET NULL"
         indexes = {ix["name"] for ix in insp.get_indexes("refresh_tokens")}
         assert "ix_refresh_tokens_expires_at" in indexes
+        assert "ai_usage" in insp.get_table_names()
 
-        command.downgrade(config, "-1")
+        command.downgrade(config, "0002")
+        assert "ai_usage" not in sa_inspect(engine).get_table_names()
+
+        command.downgrade(config, "0001")
         insp = sa_inspect(engine)
         columns = {c["name"]: c for c in insp.get_columns("assignments")}
         assert columns["created_by_id"]["nullable"] is False

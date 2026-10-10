@@ -19,7 +19,7 @@ from app.config import settings
 from app.database import engine, get_db
 from app.exceptions import AppException
 from app.rate_limit import limiter, rate_limit_exceeded_handler
-from app.routers import assignments, auth, dashboard, projects
+from app.routers import ai, assignments, auth, dashboard, projects
 
 logging.basicConfig(
     level=settings.LOG_LEVEL.upper(),
@@ -100,6 +100,7 @@ app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(projects.router, prefix=API_PREFIX)
 app.include_router(assignments.router, prefix=API_PREFIX)
 app.include_router(dashboard.router, prefix=API_PREFIX)
+app.include_router(ai.router, prefix=API_PREFIX)
 
 
 @app.get("/health", tags=["health"])

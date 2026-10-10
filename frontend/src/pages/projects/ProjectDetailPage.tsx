@@ -1,5 +1,15 @@
 import { useNavigate, useParams } from 'react-router';
-import { Alert, AlertDescription, AlertIcon, Grid, GridItem, VStack, useToast } from '@chakra-ui/react';
+import {
+  Alert,
+  AlertDescription,
+  AlertIcon,
+  Grid,
+  GridItem,
+  HStack,
+  VStack,
+  useDisclosure,
+  useToast,
+} from '@chakra-ui/react';
 import { ArrowBackIcon } from '@chakra-ui/icons';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { AnimatedButton } from '../../components/ui/AnimatedButton';
@@ -12,6 +22,9 @@ import { ProjectNotFound } from '../../components/projects/ProjectNotFound';
 import { isNotFoundError, parseProjectId } from '../../components/projects/projectUtils';
 import { useDeleteProject, useProject } from '../../hooks/useProjects';
 import { useAuth } from '../../hooks/useAuth';
+import { useAIStatus } from '../../hooks/useAi';
+import { AIPlanModal } from '../../components/ai/AIPlanModal';
+import { AIReportPanel } from '../../components/ai/AIReportPanel';
 import { getErrorMessage } from '../../services/api';
 
 export function ProjectDetailPage() {
@@ -22,6 +35,9 @@ export function ProjectDetailPage() {
   const { user } = useAuth();
   const { data: project, isLoading, isError, error } = useProject(projectId);
   const deleteProject = useDeleteProject();
+  const { data: aiStatus } = useAIStatus(projectId !== undefined);
+  const aiEnabled = Boolean(aiStatus?.enabled);
+  const planModal = useDisclosure();
 
   const handleDelete = (): void => {
     if (!project) return;
@@ -73,6 +89,13 @@ export function ProjectDetailPage() {
         ) : null}
         <Grid templateColumns={{ base: '1fr', lg: '1fr 320px' }} gap={6} alignItems="start">
           <GridItem minW={0}>
+            {aiEnabled && !isArchived ? (
+              <HStack justify="flex-end" mb={3}>
+                <AnimatedButton size="sm" variant="outline" colorScheme="brand" onClick={planModal.onOpen}>
+                  ✨ Plan with AI
+                </AnimatedButton>
+              </HStack>
+            ) : null}
             <AssignmentBoard
               projectId={project.id}
               canCreate={!isArchived}
@@ -81,11 +104,20 @@ export function ProjectDetailPage() {
           </GridItem>
           <GridItem>
             <VStack align="stretch" spacing={6}>
+              {aiEnabled ? <AIReportPanel projectId={project.id} /> : null}
               <MemberList projectId={project.id} members={project.members} isOwner={isOwner} />
               {isOwner && !isArchived ? <AddMemberForm projectId={project.id} /> : null}
             </VStack>
           </GridItem>
         </Grid>
+        {aiEnabled && !isArchived ? (
+          <AIPlanModal
+            projectId={project.id}
+            members={project.members}
+            isOpen={planModal.isOpen}
+            onClose={planModal.onClose}
+          />
+        ) : null}
       </VStack>
     );
   };

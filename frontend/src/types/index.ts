@@ -219,3 +219,44 @@ export interface ApiErrorBody {
   detail: string | { msg: string; loc?: (string | number)[]; type?: string }[];
   code?: string;
 }
+
+// ---------- AI ----------
+export interface AIStatus {
+  enabled: boolean;
+  daily_limit: number;
+  used_today: number;
+  remaining_today: number;
+}
+
+export interface PlanRequest {
+  goal: string;
+  deadline?: string | null;
+  max_items?: number;
+}
+
+export interface PlanItem {
+  title: string;
+  description: string | null;
+  priority: AssignmentPriority;
+  due_date: string | null;
+  assignee_id: number | null;
+}
+
+export interface PlanDraftItem extends PlanItem {
+  rationale: string | null;
+}
+
+export interface PlanDraft {
+  items: PlanDraftItem[];
+  notes: string | null;
+}
+
+export interface ProjectReport {
+  headline: string;
+  completed: string[];
+  in_progress: string[];
+  at_risk: string[];
+  next_steps: string[];
+  workload: string[];
+  generated_at: string;
+}

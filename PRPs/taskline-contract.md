@@ -136,3 +136,17 @@ Page files (Phase 1 placeholders, Phase 2 implements):
 `pages/projects/ProjectListPage.tsx, ProjectCreatePage.tsx, ProjectDetailPage.tsx, ProjectEditPage.tsx` ·
 `pages/assignments/AssignmentListPage.tsx, AssignmentCreatePage.tsx, AssignmentDetailPage.tsx, AssignmentEditPage.tsx` ·
 `pages/DashboardPage.tsx, SettingsPage.tsx`. `/` redirects to `/dashboard`.
+
+### AI (`routers/ai.py`, prefix `/ai`) — OpenAI, disabled when `OPENAI_API_KEY` is empty
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | /ai/status | – | AIStatus `{ enabled, daily_limit, used_today, remaining_today }` |
+| POST | /ai/projects/{id}/plan | PlanRequest `{ goal (3–2000), deadline?: date, max_items: 3–20 (default 8) }` | PlanDraft `{ items: PlanDraftItem[], notes }` — nothing saved (member; archived → 409) |
+| POST | /ai/projects/{id}/plan/apply | `{ items: PlanItem[] (1–30) }` | 201 AssignmentResponse[] — created in one transaction (assignee must be member → 400) |
+| POST | /ai/projects/{id}/report | – | ProjectReport `{ headline, completed[], in_progress[], at_risk[], next_steps[], workload[], generated_at }` |
+
+`PlanItem { title, description, priority, due_date, assignee_id }`; `PlanDraftItem = PlanItem + { rationale }`.
+Errors: AI disabled → 503 `AI_DISABLED`; OpenAI failure/refusal → 502 `AI_UNAVAILABLE`; per-user daily limit
+(`AI_DAILY_LIMIT`, counted in `ai_usage`, reset at UTC midnight) → 429 `AI_QUOTA_EXCEEDED`.
+Model output is validated: due dates clamped to [today, deadline], unknown assignees dropped, lists capped.
+Project data is sent as delimited untrusted data; member emails are never sent.
