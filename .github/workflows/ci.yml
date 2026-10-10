@@ -82,7 +82,6 @@ jobs:
         run: mypy app
 
       - name: Create pytest database
-        env:
         run: psql -h localhost -U postgres -d postgres -c "CREATE DATABASE taskline_pytest;"
 
       - name: Migrations
