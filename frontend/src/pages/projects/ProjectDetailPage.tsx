@@ -99,6 +99,7 @@ export function ProjectDetailPage() {
             <AssignmentBoard
               projectId={project.id}
               canCreate={!isArchived}
+              canDrag={!isArchived}
               onNewAssignment={() => navigate(`/assignments/new?project_id=${project.id}`)}
             />
           </GridItem>

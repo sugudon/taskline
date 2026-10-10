@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { projectService } from '../services/projectService';
+import { assignmentService } from '../services/assignmentService';
 import type {
   AddMemberRequest,
   AssignmentPage,
+  AssignmentResponse,
+  AssignmentStatus,
   ProjectCreate,
   ProjectDetail,
   ProjectMemberResponse,
@@ -56,6 +59,45 @@ export const useProjectAssignments = (projectId: number | undefined) =>
     queryFn: () => projectService.listAssignments(projectId as number),
     enabled: typeof projectId === 'number' && Number.isFinite(projectId),
   });
+
+interface MoveAssignmentVars {
+  assignmentId: number;
+  status: AssignmentStatus;
+}
+
+interface MoveAssignmentContext {
+  previous: AssignmentPage | undefined;
+}
+
+/** Drag-and-drop status change on the project board, applied optimistically. */
+export const useMoveAssignment = (projectId: number) => {
+  const qc = useQueryClient();
+  const key = projectKeys.assignments(projectId);
+  return useMutation<AssignmentResponse, Error, MoveAssignmentVars, MoveAssignmentContext>({
+    mutationFn: ({ assignmentId, status }) => assignmentService.updateStatus(assignmentId, { status }),
+    onMutate: async ({ assignmentId, status }) => {
+      await qc.cancelQueries({ queryKey: key });
+      const previous = qc.getQueryData<AssignmentPage>(key);
+      if (previous) {
+        qc.setQueryData<AssignmentPage>(key, {
+          ...previous,
+          items: previous.items.map((a) => (a.id === assignmentId ? { ...a, status } : a)),
+        });
+      }
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.previous) qc.setQueryData(key, ctx.previous);
+    },
+    onSettled: async () => {
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ['assignments'] }),
+        qc.invalidateQueries({ queryKey: ['projects'] }),
+        qc.invalidateQueries({ queryKey: ['dashboard'] }),
+      ]);
+    },
+  });
+};
 
 export const useCreateProject = () => {
   const qc = useQueryClient();
