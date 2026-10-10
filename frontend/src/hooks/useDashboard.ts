@@ -10,6 +10,8 @@ export const useDashboardSummary = (): UseQueryResult<DashboardSummary, Error> =
   useQuery({
     queryKey: dashboardKeys.all,
     queryFn: dashboardService.getSummary,
+    // Pick up tasks assigned or reassigned by teammates without a manual reload.
+    refetchInterval: 30_000,
   });
 
 export default useDashboardSummary;

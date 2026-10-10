@@ -79,6 +79,17 @@ export function AssignmentMiniList({ title, items, emptyText, viewAllTo, isOverd
   );
 }
 
+export function MyAssignmentsList({ items }: { items: AssignmentResponse[] }) {
+  return (
+    <AssignmentMiniList
+      title="My assignments"
+      items={items}
+      emptyText="Nothing is assigned to you right now."
+      viewAllTo="/assignments?mine=true"
+    />
+  );
+}
+
 export function DueSoonList({ items }: { items: AssignmentResponse[] }) {
   return (
     <AssignmentMiniList

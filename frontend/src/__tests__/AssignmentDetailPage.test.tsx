@@ -153,4 +153,23 @@ describe('AssignmentDetailPage', () => {
     renderPage();
     expect(await screen.findByText('Kaboom')).toBeInTheDocument();
   });
+
+  it('lets only the Scrum master or the task creator reassign', async () => {
+    // Bob (id 2) is a plain member and did not create the task: the select is locked.
+    setup({ assignment: makeAssignment({ id: 5, created_by: ada, assignee: bob }) });
+    renderPage(2);
+    const locked = await screen.findByLabelText('Assignee');
+    expect(locked).toBeDisabled();
+    expect(
+      screen.getByText(/Only the Scrum master or the task creator can reassign it/),
+    ).toBeInTheDocument();
+  });
+
+  it('lets a member who created the task reassign it', async () => {
+    setup({ assignment: makeAssignment({ id: 5, created_by: bob, assignee: bob }) });
+    renderPage(2);
+    const select = await screen.findByLabelText('Assignee');
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(screen.getByText(/You can reassign this task/)).toBeInTheDocument();
+  });
 });

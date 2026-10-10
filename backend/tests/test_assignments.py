@@ -607,11 +607,62 @@ def test_assignee_set_and_clear(
 ) -> None:
     assignment = make_assignment(team["project"])
     url = f"{API}/{assignment.id}/assignee"
-    headers = auth_headers(team["bystander"])
+    headers = auth_headers(team["owner"])
     body = client.patch(url, headers=headers, json={"assignee_id": team["assignee"].id}).json()
     assert body["assignee"]["id"] == team["assignee"].id
     cleared = client.patch(url, headers=headers, json={"assignee_id": None}).json()
     assert cleared["assignee"] is None
+
+
+def test_reassign_allowed_for_scrum_master_and_creator_only(
+    client: TestClient, team: dict[str, Any], auth_headers: Headers, make_assignment: MakeAssignment
+) -> None:
+    assignment = make_assignment(
+        team["project"], creator=team["creator"], assignee=team["assignee"]
+    )
+    url = f"{API}/{assignment.id}/assignee"
+
+    # The creator ("task owner") can hand the task to anyone in the project...
+    by_creator = client.patch(
+        url, headers=auth_headers(team["creator"]), json={"assignee_id": team["bystander"].id}
+    )
+    assert by_creator.status_code == 200
+    assert by_creator.json()["assignee"]["id"] == team["bystander"].id
+
+    # ...and so can the project owner (Scrum master), including to themselves.
+    by_owner = client.patch(
+        url, headers=auth_headers(team["owner"]), json={"assignee_id": team["owner"].id}
+    )
+    assert by_owner.status_code == 200
+
+    # Other members, including the current assignee, cannot reassign.
+    for who in ("bystander", "assignee"):
+        denied = client.patch(
+            url, headers=auth_headers(team[who]), json={"assignee_id": team[who].id}
+        )
+        assert denied.status_code == 403
+        assert "Scrum master" in denied.json()["detail"]
+
+    # Non-members still get 404, not 403.
+    hidden = client.patch(url, headers=auth_headers(team["outsider"]), json={"assignee_id": None})
+    assert hidden.status_code == 404
+
+
+def test_member_can_create_and_assign_to_anyone(
+    client: TestClient, team: dict[str, Any], auth_headers: Headers
+) -> None:
+    response = client.post(
+        API,
+        headers=auth_headers(team["bystander"]),
+        json={
+            "project_id": team["project"].id,
+            "title": "Self-created task",
+            "assignee_id": team["assignee"].id,
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["assignee"]["id"] == team["assignee"].id
+    assert response.json()["created_by"]["id"] == team["bystander"].id
 
 
 def test_assignee_must_be_member(

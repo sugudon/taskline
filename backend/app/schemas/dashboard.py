@@ -28,7 +28,9 @@ class DashboardSummary(BaseModel):
     total: int
     by_status: StatusCounts
     overdue_count: int
+    # Open (not done) assignments where the current user is the assignee.
     assigned_to_me_count: int
+    my_assignments: list[AssignmentResponse]
     due_this_week: list[AssignmentResponse]
     overdue: list[AssignmentResponse]
     recent_comments: list[RecentComment]

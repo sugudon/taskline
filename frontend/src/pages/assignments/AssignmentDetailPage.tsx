@@ -87,6 +87,8 @@ export function AssignmentDetailPage() {
   const isAssignee = Boolean(user && assignment.assignee?.id === user.id);
   const canEdit = isCreator || isAssignee || isOwner;
   const canDelete = isCreator || isOwner;
+  // Only the Scrum master (project owner) or the task's creator may reassign it.
+  const canReassign = isCreator || isOwner;
   const isArchived = Boolean(project?.is_archived);
 
   const handleDelete = () => {
@@ -179,11 +181,13 @@ export function AssignmentDetailPage() {
                 Details
               </Heading>
               <StatusSelect assignment={assignment} isDisabled={isArchived} />
-              <AssigneeSelect assignment={assignment} isDisabled={isArchived} />
+              <AssigneeSelect assignment={assignment} isDisabled={isArchived || !canReassign} />
               <Text fontSize="xs" color="text.muted">
                 {isArchived
                   ? 'This project is archived, so status and assignee can no longer be changed.'
-                  : 'Any project member can change the status or assignee.'}
+                  : canReassign
+                    ? 'Any project member can change the status. You can reassign this task.'
+                    : 'Any project member can change the status. Only the Scrum master or the task creator can reassign it.'}
               </Text>
             </Stack>
           </GlassCard>

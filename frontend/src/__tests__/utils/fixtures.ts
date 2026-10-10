@@ -75,6 +75,7 @@ export const makeDashboard = (overrides: Partial<DashboardSummary> = {}): Dashbo
   by_status: { todo: 0, in_progress: 0, in_review: 0, done: 0 },
   overdue_count: 0,
   assigned_to_me_count: 0,
+  my_assignments: [],
   due_this_week: [],
   overdue: [],
   recent_comments: [],

@@ -8,7 +8,7 @@ import { LoadingState } from '../components/ui/LoadingState';
 import { EmptyState } from '../components/ui/EmptyState';
 import { StatCard } from '../components/dashboard/StatCard';
 import { StatusBreakdown } from '../components/dashboard/StatusBreakdown';
-import { DueSoonList, OverdueList } from '../components/dashboard/AssignmentMiniList';
+import { DueSoonList, MyAssignmentsList, OverdueList } from '../components/dashboard/AssignmentMiniList';
 import { RecentActivity } from '../components/dashboard/RecentActivity';
 import { useDashboardSummary } from '../hooks/useDashboard';
 import { useAuth } from '../hooks/useAuth';
@@ -92,6 +92,10 @@ export function DashboardPage() {
               colorScheme="purple"
             />
           </SimpleGrid>
+
+          <Box mb={6}>
+            <MyAssignmentsList items={data.my_assignments} />
+          </Box>
 
           <SimpleGrid columns={{ base: 1, lg: 3 }} spacing={5} mb={6}>
             <StatusBreakdown byStatus={data.by_status} total={data.total} />

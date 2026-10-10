@@ -86,4 +86,33 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Dashboard down')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
+
+  it('shows my assignments, including ones without a due date', async () => {
+    routeGet({
+      '/dashboard/summary': makeDashboard({
+        total: 3,
+        by_status: { todo: 3, in_progress: 0, in_review: 0, done: 0 },
+        assigned_to_me_count: 2,
+        my_assignments: [
+          makeAssignment({ id: 7, title: 'Mine with date', due_date: isoDaysFromToday(20) }),
+          makeAssignment({ id: 8, title: 'Mine without date', due_date: null }),
+        ],
+      }),
+    });
+    renderWithProviders(<DashboardPage />, { auth: { user: makeUser() } });
+    expect(await screen.findByRole('heading', { name: /My assignments/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Mine with date' })).toHaveAttribute('href', '/assignments/7');
+    expect(screen.getByRole('link', { name: 'Mine without date' })).toBeInTheDocument();
+  });
+
+  it('says so when nothing is assigned to me', async () => {
+    routeGet({
+      '/dashboard/summary': makeDashboard({
+        total: 1,
+        by_status: { todo: 1, in_progress: 0, in_review: 0, done: 0 },
+      }),
+    });
+    renderWithProviders(<DashboardPage />, { auth: { user: makeUser() } });
+    expect(await screen.findByText('Nothing is assigned to you right now.')).toBeInTheDocument();
+  });
 });

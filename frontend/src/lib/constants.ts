@@ -41,8 +41,8 @@ export const PRIORITY_ORDER: Record<AssignmentPriority, number> = {
 };
 
 export const ROLE_LABELS: Record<ProjectRole, string> = {
-  owner: 'Owner',
-  member: 'Member',
+  owner: 'Scrum master',
+  member: 'Team member',
 };
 
 export const SORT_OPTIONS: { value: AssignmentSort; label: string }[] = [

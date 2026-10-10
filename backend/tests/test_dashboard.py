@@ -27,6 +27,7 @@ def test_dashboard_empty(client: TestClient, make_user: MakeUser, auth_headers: 
         "by_status": {"todo": 0, "in_progress": 0, "in_review": 0, "done": 0},
         "overdue_count": 0,
         "assigned_to_me_count": 0,
+        "my_assignments": [],
         "due_this_week": [],
         "overdue": [],
         "recent_comments": [],
@@ -136,3 +137,76 @@ def test_dashboard_scoped_per_user(
     bob_body = client.get(API, headers=auth_headers(bob)).json()
     assert bob_body["total"] == 2
     assert bob_body["assigned_to_me_count"] == 0
+
+
+def test_my_assignments_lists_only_my_open_work_in_order(
+    client: TestClient,
+    make_user: MakeUser,
+    auth_headers: Headers,
+    make_project: MakeProject,
+    make_assignment: MakeAssignment,
+) -> None:
+    scrum_master, employee = make_user(), make_user()
+    project = make_project(scrum_master, members=[employee])
+    no_date_urgent = make_assignment(
+        project, title="No date, urgent", priority="urgent", assignee=employee
+    )
+    no_date_low = make_assignment(project, title="No date, low", priority="low", assignee=employee)
+    far = make_assignment(
+        project, title="Far", due_date=TODAY + timedelta(days=60), assignee=employee
+    )
+    soon = make_assignment(
+        project, title="Soon", due_date=TODAY + timedelta(days=1), assignee=employee
+    )
+    late = make_assignment(
+        project, title="Late", due_date=TODAY - timedelta(days=3), assignee=employee
+    )
+    make_assignment(project, title="Done", status=AssignmentStatus.DONE, assignee=employee)
+    make_assignment(project, title="Someone else's", assignee=scrum_master)
+
+    body = client.get(API, headers=auth_headers(employee)).json()
+
+    assert [a["id"] for a in body["my_assignments"]] == [
+        late.id,
+        soon.id,
+        far.id,
+        no_date_urgent.id,
+        no_date_low.id,
+    ]
+    assert body["assigned_to_me_count"] == 5  # open work only
+    assert body["my_assignments"][0]["is_overdue"] is True
+
+
+def test_reassignment_moves_task_between_dashboards(
+    client: TestClient,
+    make_user: MakeUser,
+    auth_headers: Headers,
+    make_project: MakeProject,
+) -> None:
+    scrum_master, alice, bob = make_user(), make_user(), make_user()
+    project = make_project(scrum_master, members=[alice, bob])
+
+    # An employee creates a task for themselves...
+    created = client.post(
+        "/api/v1/assignments",
+        headers=auth_headers(alice),
+        json={"project_id": project.id, "title": "Write tests", "assignee_id": alice.id},
+    ).json()
+
+    def mine(user: User) -> list[str]:
+        return [
+            a["title"] for a in client.get(API, headers=auth_headers(user)).json()["my_assignments"]
+        ]
+
+    assert mine(alice) == ["Write tests"]
+    assert mine(bob) == []
+
+    # ...and the Scrum master reassigns it to Bob: it moves to Bob's dashboard.
+    response = client.patch(
+        f"/api/v1/assignments/{created['id']}/assignee",
+        headers=auth_headers(scrum_master),
+        json={"assignee_id": bob.id},
+    )
+    assert response.status_code == 200
+    assert mine(alice) == []
+    assert mine(bob) == ["Write tests"]

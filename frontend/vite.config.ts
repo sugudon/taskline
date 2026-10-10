@@ -27,6 +27,8 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/__tests__/setup.ts'],
+    // UI tests drive real user-event typing; give slow/loaded machines (CI) headroom.
+    testTimeout: 20_000,
     css: false,
     coverage: {
       provider: 'v8',

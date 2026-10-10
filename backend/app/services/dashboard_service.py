@@ -9,6 +9,7 @@ from app.models import Assignment, AssignmentStatus, Comment, User
 from app.schemas.dashboard import DashboardSummary, RecentComment, StatusCounts
 from app.schemas.user import UserSummary
 from app.services.assignment_service import (
+    PRIORITY_RANK,
     overdue_condition,
     responses_from_rows,
     select_assignments_with_counts,
@@ -17,6 +18,7 @@ from app.services.assignment_service import (
 )
 
 LIST_LIMIT = 10
+MY_ASSIGNMENTS_LIMIT = 20
 
 
 def get_summary(db: Session, user: User) -> DashboardSummary:
@@ -29,7 +31,19 @@ def get_summary(db: Session, user: User) -> DashboardSummary:
             Assignment.status,
             func.count(Assignment.id),
             func.coalesce(func.sum(case((overdue_condition(today), 1), else_=0)), 0),
-            func.coalesce(func.sum(case((Assignment.assignee_id == user.id, 1), else_=0)), 0),
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            (Assignment.assignee_id == user.id)
+                            & (Assignment.status != AssignmentStatus.DONE),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
         )
         .where(visible)
         .group_by(Assignment.status)
@@ -56,6 +70,26 @@ def get_summary(db: Session, user: User) -> DashboardSummary:
         .limit(LIST_LIMIT)
     ).all()
 
+    # The user's own open work: dated items first (soonest due), then by urgency.
+    priority_rank = case(
+        *((Assignment.priority == p, rank) for p, rank in PRIORITY_RANK.items()), else_=99
+    )
+    my_rows = db.execute(
+        select_assignments_with_counts()
+        .where(
+            visible,
+            Assignment.assignee_id == user.id,
+            Assignment.status != AssignmentStatus.DONE,
+        )
+        .order_by(
+            Assignment.due_date.is_(None),
+            Assignment.due_date.asc(),
+            priority_rank,
+            Assignment.id.asc(),
+        )
+        .limit(MY_ASSIGNMENTS_LIMIT)
+    ).all()
+
     overdue_rows = db.execute(
         select_assignments_with_counts()
         .where(visible, overdue_condition(today))
@@ -77,6 +111,7 @@ def get_summary(db: Session, user: User) -> DashboardSummary:
         by_status=by_status,
         overdue_count=overdue_count,
         assigned_to_me_count=mine_count,
+        my_assignments=responses_from_rows(my_rows, today),
         due_this_week=responses_from_rows(due_rows, today),
         overdue=responses_from_rows(overdue_rows, today),
         recent_comments=[

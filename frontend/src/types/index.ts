@@ -209,6 +209,8 @@ export interface DashboardSummary {
   by_status: StatusCounts;
   overdue_count: number;
   assigned_to_me_count: number;
+  /** Open assignments where the current user is the assignee. */
+  my_assignments: AssignmentResponse[];
   due_this_week: AssignmentResponse[];
   overdue: AssignmentResponse[];
   recent_comments: RecentComment[];

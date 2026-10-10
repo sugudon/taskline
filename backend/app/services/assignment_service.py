@@ -328,6 +328,9 @@ def update_assignee(
     db: Session, assignment_id: int, user: User, assignee_id: int | None
 ) -> AssignmentResponse:
     assignment = get_visible_assignment(db, assignment_id, user)
+    # Only the project owner (Scrum master) or the task's creator may (re)assign it.
+    if not (is_owner(assignment.project, user) or assignment.created_by_id == user.id):
+        raise ForbiddenError("Only the Scrum master or the task's creator can reassign it")
     require_not_archived(assignment.project)
     if assignee_id is not None:
         _ensure_assignee_is_member(db, assignment.project_id, assignee_id)
