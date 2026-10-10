@@ -83,7 +83,7 @@ services:
     image: postgres:15-alpine
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
       POSTGRES_DB: ${DB_NAME:-appdb}
     volumes:
       - postgres_data:/var/lib/postgresql/data
